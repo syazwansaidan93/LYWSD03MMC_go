@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Environmental Dashboard</title>
+    <!-- Tailwind CSS CDN for basic styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN for charting -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: "Inter", sans-serif;
+            background-color: #f0f4f8; /* Light background */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px; /* Good padding for mobile */
+            box-sizing: border-box;
+        }
+        .dashboard-container {
+            background-color: #ffffff;
+            border-radius: 1.5rem; /* More rounded corners */
+            box-shadow: 0 15px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05); /* Stronger shadow */
+            padding: 2rem; /* Consistent padding */
+            width: 100%;
+            max-width: 1000px; /* Increased max width */
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            align-items: center;
+        }
+        .data-card {
+            background-color: #edf2f7; /* Lighter background for cards */
+            border-radius: 0.75rem;
+            padding: 1.25rem;
+            text-align: center;
+            flex: 1; /* Allow cards to grow and shrink */
+            min-width: 180px; /* Minimum width for cards to prevent squishing */
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        .chart-section {
+            width: 100%;
+            /* Removed min-height here to allow more flexibility on very short mobile screens */
+        }
+        /* New styles for scrollable chart */
+        .chart-scroll-container {
+            width: 100%; /* Take full width of parent */
+            overflow-x: auto; /* Enable horizontal scrolling */
+            -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+            padding-bottom: 10px; /* Space for scrollbar */
+        }
+        .chart-wrapper {
+            position: relative;
+            height: 300px; /* Fixed height for the chart to prevent vertical expansion */
+            min-width: 1200px; /* Increased minimum width for the chart to ensure readability on scroll */
+        }
+        canvas {
+            width: 100% !important; /* Ensure canvas takes full width of its wrapper */
+            height: 100% !important; /* Ensure canvas takes full height of its wrapper */
+        }
+        @media (min-width: 768px) {
+            .data-cards-wrapper {
+                flex-direction: row; /* Arrange cards in a row on larger screens */
+                flex-wrap: wrap; /* Allow cards to wrap to the next line */
+                justify-content: space-around; /* Distribute space evenly */
+            }
+            .data-card {
+                flex-basis: calc(33% - 1rem); /* Roughly 3 cards per row with gap */
+            }
+            /* On larger screens, remove min-width from chart-wrapper to let it scale normally */
+            .chart-wrapper {
+                min-width: auto;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+    <div class="dashboard-container">
+        <!-- Min/Max Readings Section -->
+        <div class="data-cards-wrapper flex flex-col md:flex-row gap-4 w-full justify-center">
+            <div class="data-card">
+                <p class="text-sm font-semibold text-gray-600 mb-1">Lowest Temperature</p>
+                <p id="lowestTemp" class="text-4xl font-bold text-red-500">--</p>
+            </div>
+            <div class="data-card">
+                <p class="text-sm font-semibold text-gray-600 mb-1">Highest Temperature</p>
+                <p id="highestTemp" class="text-4xl font-bold text-red-700">--</p>
+            </div>
+            <div class="data-card">
+                <p class="text-sm font-semibold text-gray-600 mb-1">Lowest Humidity</p>
+                <p id="lowestHumid" class="text-4xl font-bold text-blue-500">--</p>
+            </div>
+            <div class="data-card">
+                <p class="text-sm font-semibold text-gray-600 mb-1">Highest Humidity</p>
+                <p id="highestHumid" class="text-4xl font-bold text-blue-700">--</p>
+            </div>
+        </div>
+
+        <!-- Graph Section -->
+        <div class="chart-section">
+            <div class="chart-scroll-container">
+                <div class="chart-wrapper">
+                    <canvas id="tempHumidChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let myChart; // Declare chart variable globally to destroy/recreate
+
+        // Function to update the dashboard with the lowest/highest data
+        function updateDashboard(data) {
+            if (data.length > 0) {
+                const temperatures = data.map(entry => parseFloat(entry.temp));
+                const humidities = data.map(entry => parseFloat(entry.humid));
+
+                document.getElementById('lowestTemp').textContent = Math.min(...temperatures).toFixed(1) + '°C';
+                document.getElementById('highestTemp').textContent = Math.max(...temperatures).toFixed(1) + '°C';
+                document.getElementById('lowestHumid').textContent = Math.min(...humidities).toFixed(0) + '%';
+                document.getElementById('highestHumid').textContent = Math.max(...humidities).toFixed(0) + '%';
+            } else {
+                // Clear values if no data
+                document.getElementById('lowestTemp').textContent = '--';
+                document.getElementById('highestTemp').textContent = '--';
+                document.getElementById('lowestHumid').textContent = '--';
+                document.getElementById('highestHumid').textContent = '--';
+            }
+        }
+
+        // Function to create or update the chart
+        function createOrUpdateChart(data) {
+            const labels = data.map(entry => entry.time).reverse();
+            const temperatures = data.map(entry => parseFloat(entry.temp)).reverse();
+
+            const ctx = document.getElementById('tempHumidChart').getContext('2d');
+
+            // Destroy existing chart if it exists
+            if (myChart) {
+                myChart.destroy();
+            }
+
+            myChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Temperature (°C)',
+                            data: temperatures,
+                            borderColor: 'rgb(239, 68, 68)', /* Tailwind red-500 */
+                            backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                            tension: 0.2, /* Slightly more curve */
+                            fill: false,
+                            pointRadius: 3, /* Make points slightly larger */
+                            pointHoverRadius: 5,
+                            borderWidth: 2 /* Make lines slightly thicker */
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false, /* Set to false to allow horizontal stretching */
+                    plugins: {
+                        title: {
+                            display: false,
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                            titleColor: '#fff',
+                            bodyColor: '#fff',
+                            cornerRadius: 6,
+                            displayColors: true,
+                            bodyFont: {
+                                size: 14
+                            },
+                            titleFont: {
+                                size: 14
+                            }
+                        },
+                        legend: {
+                            labels: {
+                                color: '#4b5563',
+                                font: {
+                                    size: 14
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Time',
+                                color: '#4b5563',
+                                font: {
+                                    size: 16
+                                }
+                            },
+                            ticks: {
+                                autoSkip: false, /* Disable auto-skipping to show all labels */
+                                maxRotation: 45, /* Rotate labels for better fit */
+                                minRotation: 45,
+                                color: '#6b7280',
+                                font: {
+                                    size: 12
+                                }
+                            },
+                            grid: {
+                                color: '#e5e7eb'
+                            }
+                        },
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'Temperature (°C)',
+                                color: '#4b5563',
+                                font: {
+                                    size: 16
+                                }
+                            },
+                            min: Math.min(...temperatures) - 1,
+                            max: Math.max(...temperatures) + 1,
+                            ticks: {
+                                color: '#6b7280',
+                                font: {
+                                    size: 12
+                                }
+                            },
+                            grid: {
+                                color: '#e5e7eb'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Function to fetch data from the API
+        async function fetchData() {
+            try {
+                const response = await fetch('/api/history');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                updateDashboard(data);
+                createOrUpdateChart(data);
+            } catch (error) {
+                console.error('Error fetching data:', error);
+                // Optionally display an error message on the dashboard
+                document.getElementById('lowestTemp').textContent = 'Error';
+                document.getElementById('highestTemp').textContent = 'Error';
+                document.getElementById('lowestHumid').textContent = 'Error';
+                document.getElementById('highestHumid').textContent = 'Error';
+            }
+        }
+
+        // Fetch data when the page loads
+        window.onload = fetchData;
+
+        // Optionally, refresh data every 5 minutes (300000 milliseconds)
+        // setInterval(fetchData, 300000);
+    </script>
+</body>
+</html>
