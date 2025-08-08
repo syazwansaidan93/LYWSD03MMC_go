@@ -63,9 +63,9 @@ Navigate to your project directory and download the necessary Go modules.
 ```bash
 cd /home/wan/sensor
 go mod init sensor_collector # You can choose a different module name
-go get [github.com/go-ble/ble](https://github.com/go-ble/ble)
-go get [github.com/go-ble/ble/linux](https://github.com/go-ble/ble/linux)
-go get [github.com/mattn/go-sqlite3](https://github.com/mattn/go-sqlite3)
+go get github.com/go-ble/ble
+go get github.com/go-ble/ble/linux
+go get github.com/mattn/go-sqlite3
 ```
 
 **d. Build the Executable:**
